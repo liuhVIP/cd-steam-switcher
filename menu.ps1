@@ -157,8 +157,11 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
             if($finished){
                 $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath;$autoContent=if($finished.CompletedPath){$finished.CompletedPath}else{Join-Path $autoRoot 'app_3321460\depot_3321461'}
                 if(Test-SteamDepotDownloaded $autoContent){
-                    $msg=if($finished.Manifest){'检测到已完成下载: 路径 '+$autoContent+' / manifest '+$finished.Manifest}else{'检测到 Depot 内容已完整写入: '+$autoContent+'（Steam 尚未记录 finished update）'};Write-StepOk $msg
                     $target=Find-VersionByManifest -Manifest $finished.Manifest
+                    $versionText=if($target){$target.label}else{'未知版本'};$buildText=if($target){$target.buildid}else{$finished.BuildId};$manifestText=if($target){$target.manifest}else{$finished.Manifest}
+                    Write-StepOk '检测到已完成的历史版本下载'
+                    Write-Host ('版本: '+$versionText+'    Build: '+$buildText+'    Manifest: '+$manifestText) -ForegroundColor Cyan
+                    Write-Host ('路径: '+$autoContent) -ForegroundColor Cyan
                     if($autoEnv.GameDir -and ((Read-Host '是否现在安装并锁定已下载版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){
                         if(!$target){$target=[pscustomobject]@{id=('build.'+$finished.BuildId);label=('Build '+$finished.BuildId);buildid=[int64]$finished.BuildId;manifest=$finished.Manifest}}
                         Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成'
