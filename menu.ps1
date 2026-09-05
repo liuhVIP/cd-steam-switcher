@@ -156,7 +156,7 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
         } else {
             $finished=Find-CompletedSteamDepotDownload -SteamPath $autoEnv.SteamPath
             if($finished){
-                $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath;$autoContent=if($finished.CompletedPath){$finished.CompletedPath}else{Join-Path $autoRoot 'app_3321460\depot_3321461'}
+                $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath;$configuredContent=Join-Path $autoRoot 'app_3321460\depot_3321461';$autoContent=if(Test-SteamDepotDownloaded $configuredContent){$configuredContent}elseif($finished.CompletedPath){$finished.CompletedPath}else{$configuredContent}
                 if(Test-SteamDepotDownloaded $autoContent){
                     $target=Find-VersionByManifest -Manifest $finished.Manifest
                     $versionText=if($target){$target.label}else{'未知版本'};$buildText=if($target){$target.buildid}else{$finished.BuildId};$manifestText=if($target){$target.manifest}else{$finished.Manifest}
@@ -165,7 +165,7 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
                     Write-Host ('路径: '+$autoContent) -ForegroundColor Cyan
                     if($autoEnv.GameDir -and ((Read-Host '是否现在安装并锁定已下载版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){
                         if(!$target){$target=[pscustomobject]@{id=('build.'+$finished.BuildId);label=('Build '+$finished.BuildId);buildid=[int64]$finished.BuildId;manifest=$finished.Manifest}}
-                        Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成';$del=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($del -eq 'Y'){Remove-Item -LiteralPath (Split-Path $autoContent -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo '已保留下载缓存: '+$autoContent}
+                        Write-StepInfo '开始整目录替换，期间会显示复制进度，请勿关闭窗口。';Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成';$del=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($del -eq 'Y'){Remove-Item -LiteralPath (Split-Path $autoContent -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo '已保留下载缓存: '+$autoContent}
                     }
                 }
             }
