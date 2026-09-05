@@ -97,8 +97,9 @@ function Find-ActiveSteamDepotDownload {
 function Find-CompletedSteamDepotDownload {
  param([string]$SteamPath)
  $log=Get-SteamContentLogPath -SteamPath $SteamPath;if(!$log){return $null}
- $line=(Get-Content -LiteralPath $log -Tail 400 -ErrorAction SilentlyContinue|?{$_ -match 'AppID\s+3321460 finished update,.*BuildID\s+(\d+).*3321461\s+\((\d+)\)' }|Select-Object -Last 1)
+ $all=Get-Content -LiteralPath $log -Tail 600 -ErrorAction SilentlyContinue;$line=($all|?{$_ -match 'AppID\s+3321460 finished update,.*BuildID\s+(\d+).*3321461\s+\((\d+)\)' }|Select-Object -Last 1)
  if($line -and $line -match 'BuildID\s+(\d+).*3321461\s+\((\d+)\)'){[pscustomobject]@{BuildId=$Matches[1];Manifest=$Matches[2];LogPath=$log}}
+ if(!$line){$start=($all|?{$_ -match 'AppID\s+3321460 update started\s*:\s*download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'}|Select-Object -Last 1);if($start -and $start -match 'download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'){$root=Get-ConfiguredDepotRoot -SteamPath $SteamPath;$content=Join-Path $root 'app_3321460\depot_3321461';$size=Get-DirectoryBytes $content;if($size -ge [int64]$Matches[4]){[pscustomobject]@{BuildId='';Manifest='';LogPath=$log;StageTotal=[int64]$Matches[4]}}}}
 }
 function Get-EstimatedGameSize {
  param([string]$GameDir)
