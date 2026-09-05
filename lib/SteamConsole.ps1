@@ -65,6 +65,7 @@ function Get-SteamContentLogPath {
  param([string]$SteamPath)
  if($SteamPath){$p=Join-Path $SteamPath 'logs\content_log.txt';if(Test-Path $p){return $p}}
 }
+function Get-SteamConsoleLogPath { param([string]$SteamPath);if($SteamPath){$p=Join-Path $SteamPath 'logs\console_log.txt';if(Test-Path $p){$p}} }
 function Get-SteamLogDownloadStats {
  param([string]$LogPath)
  if(!(Test-Path $LogPath)){return $null}
@@ -98,7 +99,7 @@ function Find-ActiveSteamDepotDownload {
 }
 function Find-CompletedSteamDepotDownload {
  param([string]$SteamPath)
- $log=Get-SteamContentLogPath -SteamPath $SteamPath;if(!$log){return $null}
+ $console=Get-SteamConsoleLogPath -SteamPath $SteamPath;$log=Get-SteamContentLogPath -SteamPath $SteamPath;if($console){$cl=Get-Content -LiteralPath $console -Tail 300 -ErrorAction SilentlyContinue;$complete=$cl|?{$_ -match 'Depot download complete\s*:\s*"([^"]+)"\s*\(manifest\s+(\d+)\)'}|Select-Object -Last 1;if($complete -and $complete -match 'Depot download complete\s*:\s*"([^"]+)"\s*\(manifest\s+(\d+)\)'){return [pscustomobject]@{BuildId='';Manifest=$Matches[2];LogPath=$console;CompletedPath=$Matches[1]}}};if(!$log){return $null}
  $all=@(Get-Content -LiteralPath $log -Tail 600 -ErrorAction SilentlyContinue);$lastStart=($all|Select-String 'AppID\s+3321460 update started'|Select-Object -Last 1);$lastFinish=($all|Select-String 'AppID\s+3321460 finished update'|Select-Object -Last 1);$line=$null;if($lastFinish -and (!$lastStart -or [string]$lastFinish.LineNumber -gt [string]$lastStart.LineNumber)){$line=$lastFinish.Line}
  if($line -and $line -match 'BuildID\s+(\d+).*3321461\s+\((\d+)\)'){[pscustomobject]@{BuildId=$Matches[1];Manifest=$Matches[2];LogPath=$log}}
  if(!$line){$start=($all|?{$_ -match 'AppID\s+3321460 update started\s*:\s*download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'}|Select-Object -Last 1);if($start -and $start -match 'download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'){$root=Get-ConfiguredDepotRoot -SteamPath $SteamPath;$content=Join-Path $root 'app_3321460\depot_3321461';$size=Get-DirectoryBytes $content;if($size -ge [int64]$Matches[4]){[pscustomobject]@{BuildId='';Manifest='';LogPath=$log;StageTotal=[int64]$Matches[4]}}}}
