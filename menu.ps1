@@ -146,6 +146,7 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
         $autoEnv=Get-CrimsonDesertEnvironment
         $autoLog=Get-SteamContentLogPath -SteamPath $autoEnv.SteamPath
         if($autoEnv.AcfFound){Sync-VersionRegistryFromEnvironment -Environment $autoEnv -LogPath $autoLog|Out-Null}
+        Sync-VersionRegistryFromSteamDb|Out-Null
         $activeTask=Find-ActiveSteamDepotDownload -SteamPath $autoEnv.SteamPath
         if($activeTask){
             $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath
