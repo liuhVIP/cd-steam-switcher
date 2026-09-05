@@ -28,13 +28,3 @@ function Sync-VersionRegistryFromEnvironment {
  }
  if($changed){$r.versions=$items;Save-VersionRegistry $r $Path};return $changed
 }
-function Sync-VersionRegistryFromSteamDb {
- param([string]$Path=(Get-VersionsFilePath),[int]$TimeoutSec=8)
- try {
-  $uri='https://steamdb.info/api/GetAppHistory/?appid=3321460'
-  $resp=Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec $TimeoutSec -Headers @{'User-Agent'='cd-steam-switcher/1.0'}
-  $json=$resp.Content|ConvertFrom-Json;$r=Read-VersionRegistry $Path;$items=@($r.versions);$changed=$false
-  foreach($row in @($json)){ $build=[string]$row.buildid;$manifest=[string]$row.manifest;if(!$build -or !$manifest){continue};if(@($items|?{[string]$_.manifest -eq $manifest}).Count -eq 0){$items+=[pscustomobject]@{id=('build.'+$build);label=('Build '+$build);release_date=([string]$row.date);buildid=[int64]$build;manifest=$manifest;exe_sha256='';notes='SteamDB 自动同步；版本名称待补充';source='steamdb';verified=$false};$changed=$true} }
-  if($changed){$r.versions=$items;Save-VersionRegistry $r $Path};return $changed
- } catch { return $false }
-}
