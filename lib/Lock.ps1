@@ -1,7 +1,9 @@
 ﻿# ACF 锁定/解锁（写前备份，操作可逆）
 function Set-VersionLock { param([Parameter(Mandatory)]$Environment,[Parameter(Mandatory)]$Version)
  if(!$Environment.AcfPath){throw '未找到 ACF'}; $backup=Join-Path (Get-StateDir) ('acf_backup_'+(Get-Date -Format yyyyMMdd_HHmmss)+'.acf');Copy-FileBackup $Environment.AcfPath $backup -Force
- $n=Read-VdfFile $Environment.AcfPath;Set-AcfBuildId $n ([string]$Version.buildid);Set-AcfDepotManifest $n '3321461' ([string]$Version.manifest);Set-FileReadOnly $Environment.AcfPath $false;Write-VdfFile $Environment.AcfPath $n;Set-FileReadOnly $Environment.AcfPath $true
+ # Steam 必须看到最新 ACF 才允许正常启动；真实回退版本只记录在工具状态中。
+ # 不修改 ACF 的 buildid/manifest，也不设置只读，避免 Steam 启动时写入失败。
+ Set-FileReadOnly $Environment.AcfPath $false
  $state=Join-Path (Get-StateDir) 'lock.json';[pscustomobject]@{VersionId=$Version.id;Manifest=$Version.manifest;BuildId=$Version.buildid;Backup=$backup;CreatedUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json|Set-Content -Encoding UTF8 $state
 }
 function Clear-VersionLock { param([string]$AcfPath)
@@ -9,5 +11,5 @@ function Clear-VersionLock { param([string]$AcfPath)
 }
 function Set-LockFileWritable { param([string]$AcfPath,[bool]$Writable=$true);if(Test-Path $AcfPath){Set-FileReadOnly -Path $AcfPath -ReadOnly (!$Writable)} }
 function Reapply-VersionLock { param([string]$AcfPath)
- $state=Join-Path (Get-StateDir) 'lock.json';if(!(Test-Path $state)){throw '没有锁定状态'};$s=Get-Content -Raw $state|ConvertFrom-Json;Set-FileReadOnly $AcfPath $false;$n=Read-VdfFile $AcfPath;Set-AcfBuildId $n ([string]$s.BuildId);Set-AcfDepotManifest $n '3321461' ([string]$s.Manifest);Write-VdfFile $AcfPath $n;Set-FileReadOnly $AcfPath $true
+ $state=Join-Path (Get-StateDir) 'lock.json';if(!(Test-Path $state)){throw '没有锁定状态'};Set-FileReadOnly $AcfPath $false
 }

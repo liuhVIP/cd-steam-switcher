@@ -6,7 +6,9 @@ function Install-DownloadedVersion {
  if(!(Test-Path -LiteralPath $Source -PathType Container)){throw '下载目录不存在'}
  if($DryRun){return @(Get-TreeFiles $Source)}
  if(-not $DirectReplace -and (Get-Variable -Name DirectReplaceMode -Scope Script -ErrorAction SilentlyContinue)){$DirectReplace=[bool]$script:DirectReplaceMode}
- # 目标游戏不存在时没有备份对象：同盘直接移动文件，避免为安全模式额外占用一份完整游戏空间。
+ # 新 Depot 内容统一使用移动（剪切），不再复制。
+ $DirectReplace=$true
+ # 安装统一采用移动（剪切），不再逐文件复制，避免额外占用一份完整游戏空间。
  # 若目标已存在，则仍按安全模式保留备份并复制；低空间模式由 DirectReplace 强制移动。
  $targetExists=Test-Path -LiteralPath $GameDir -PathType Container
  if(-not $targetExists){
@@ -20,9 +22,12 @@ function Install-DownloadedVersion {
  try {
   if(Test-Path -LiteralPath $GameDir){if($DirectReplace){$existing=@(Get-ChildItem -LiteralPath $GameDir -Force);foreach($item in $existing){Remove-Item -LiteralPath $item.FullName -Recurse -Force}}else{Move-Item -LiteralPath $GameDir -Destination $backup;$moved=$true}}
   New-Item -ItemType Directory -Path $GameDir -Force|Out-Null;$done=0L;$i=0;$start=Get-Date
-  foreach($f in $files){$rel=$f.FullName.Substring($Source.Length).TrimStart('\');$dest=Join-Path $GameDir $rel;$d=Split-Path $dest -Parent;if(!(Test-Path -LiteralPath $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};if($DirectReplace){Move-Item -LiteralPath $f.FullName -Destination $dest -Force}else{Copy-Item -LiteralPath $f.FullName -Destination $dest -Force};$done+=$f.Length;$i++;$pct=if($total){$done/$total*100}else{100};$rate=[Int64]($done/[Math]::Max(1,((Get-Date)-$start).TotalSeconds));Write-Progress -Activity $(if($DirectReplace){'移动游戏文件'}else{'替换游戏目录'}) -Status ('{0:N1}% {1}/{2} 文件 {3}/{4} {5}/s' -f $pct,$i,$files.Count,(Format-Bytes -Bytes $done),(Format-Bytes -Bytes $total),(Format-Bytes -Bytes $rate)) -PercentComplete $pct}
+  foreach($f in $files){$rel=$f.FullName.Substring($Source.Length).TrimStart('\');$dest=Join-Path $GameDir $rel;$d=Split-Path $dest -Parent;if(!(Test-Path -LiteralPath $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};Move-Item -LiteralPath $f.FullName -Destination $dest -Force;$done+=$f.Length;$i++;$pct=if($total){$done/$total*100}else{100};$rate=[Int64]($done/[Math]::Max(1,((Get-Date)-$start).TotalSeconds));Write-Progress -Activity $(if($DirectReplace){'移动游戏文件'}else{'替换游戏目录'}) -Status ('{0:N1}% {1}/{2} 文件 {3}/{4} {5}/s' -f $pct,$i,$files.Count,(Format-Bytes -Bytes $done),(Format-Bytes -Bytes $total),(Format-Bytes -Bytes $rate)) -PercentComplete $pct}
   Write-Progress -Activity '替换游戏目录' -Completed;if($moved){Remove-Item -LiteralPath $backup -Recurse -Force};Write-Host '安装完成，下载缓存默认保留。' -ForegroundColor Green
-  $remove=Read-Host '是否删除下载缓存？(Y/N，默认 N)';if($null -eq $remove){$remove='N'}else{$remove=$remove.Trim().ToUpperInvariant()};if($remove -eq 'Y'){Remove-Item -LiteralPath $Source -Recurse -Force;Write-Host '已删除下载缓存。' -ForegroundColor Green}else{Write-Host ('已保留下载缓存: '+$Source) -ForegroundColor Cyan}
+  # Depot 文件已全部移动到游戏目录，不再询问删除缓存；仅清理留下的空目录。
+  try {
+   if((Test-Path -LiteralPath $Source -PathType Container) -and @(Get-ChildItem -LiteralPath $Source -Force -ErrorAction SilentlyContinue).Count -eq 0){Remove-Item -LiteralPath $Source -Force -ErrorAction SilentlyContinue}
+  } catch { }
   [pscustomobject]@{Success=$true;Destination=$GameDir;Files=$files.Count;DirectReplace=$DirectReplace}
  } catch {
   if(Test-Path -LiteralPath $GameDir){Remove-Item -LiteralPath $GameDir -Recurse -Force -ErrorAction SilentlyContinue}
@@ -33,3 +38,5 @@ function Install-DownloadedVersion {
   throw
  }
 }
+
+

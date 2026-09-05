@@ -75,7 +75,24 @@ function Set-DepotDownloadRoot {
  if($Root -eq [IO.Path]::GetFullPath($default)){throw '目标目录与 Steam content 目录相同'}
  if(!(Test-Path $Root)){New-Item -ItemType Directory $Root -Force|Out-Null}
  if(!(Test-Path -LiteralPath $default)){New-Item -ItemType Directory -Path $default -Force|Out-Null}
- if(Test-Path -LiteralPath $defaultApp){$item=Get-Item -LiteralPath $defaultApp -Force;$isLink=(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or ($item.LinkType -ne $null);if($isLink){Remove-Item -LiteralPath $defaultApp -Force -ErrorAction Stop}else{if(@(Get-ChildItem -LiteralPath $defaultApp -Force).Count -gt 0){throw 'Steam app_3321460 目录已有内容，请先处理后重试'};Remove-Item -LiteralPath $defaultApp -Force -ErrorAction Stop}}
+ if(Test-Path -LiteralPath $defaultApp){
+  $item=Get-Item -LiteralPath $defaultApp -Force
+  $isLink=(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or ($item.LinkType -ne $null)
+  if($isLink){
+   # 旧映射是 junction/符号链接，只需移除链接本身，不触碰目标目录内容。
+   Remove-Item -LiteralPath $defaultApp -Force -ErrorAction Stop
+  } else {
+   # Steam 入口被占用或已有遗留文件时保留现场：改名后再创建新的映射，绝不删除用户数据。
+   $leaf=(Split-Path $defaultApp -Leaf)
+   $parentDefault=Split-Path $defaultApp -Parent
+   $stamp=Get-Date -Format yyyyMMdd_HHmmss
+   $preserved=Join-Path $parentDefault ($leaf+'.backup_'+$stamp)
+   $n=1
+   while(Test-Path -LiteralPath $preserved){$preserved=Join-Path $parentDefault ($leaf+'.backup_'+$stamp+'_'+$n);$n++}
+   Move-Item -LiteralPath $defaultApp -Destination $preserved -ErrorAction Stop
+   Write-StepWarn ('Steam app_3321460 目录已有内容，已保留并改名为: '+$preserved)
+  }
+ }
  if(!(Test-Path -LiteralPath $rootApp)){New-Item -ItemType Directory -Path $rootApp -Force|Out-Null}
  New-Item -ItemType Junction -Path $defaultApp -Target $rootApp -ErrorAction Stop|Out-Null
  $d=Get-StateDir;if(!(Test-Path $d)){New-Item -ItemType Directory $d -Force|Out-Null};[pscustomobject]@{Root=$Root;Default=$default}|ConvertTo-Json|Set-Content -Encoding UTF8 (Get-DepotDownloadSettingsPath)

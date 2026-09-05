@@ -49,6 +49,7 @@ if (Test-Path -LiteralPath $releaseRoot) {
 Write-Host ('[2/4] Creating release v' + $version + '...') -ForegroundColor Cyan
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'lib') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'state') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $packageRoot 'templates') -Force | Out-Null
 
 $rootFiles = @(
     'menu.ps1',
@@ -70,6 +71,7 @@ if (-not $launcher) {
 }
 Copy-Item -LiteralPath $launcher.FullName -Destination $packageRoot -Force
 Copy-Item -Path (Join-Path $root 'lib\*.ps1') -Destination (Join-Path $packageRoot 'lib') -Force
+Copy-Item -Path (Join-Path $root 'templates\*.acf') -Destination (Join-Path $packageRoot 'templates') -Force
 New-Item -ItemType File -Path (Join-Path $packageRoot 'state\.gitkeep') -Force | Out-Null
 
 $packagedVersion = [string]((Get-Content -Raw -LiteralPath (Join-Path $packageRoot 'versions.json') | ConvertFrom-Json).tool_version)

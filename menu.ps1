@@ -157,6 +157,16 @@ function Ensure-GameEnvironment {
 }
 function Confirm-DeleteDownload { param([string]$Path);$answer=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($answer -eq 'Y' -and (Test-Path $Path)){Remove-Item -LiteralPath (Split-Path $Path -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo ('已保留下载缓存: '+$Path)} }
 
+function Complete-DownloadedVersion {
+ param($Environment,$Content,$Version)
+  if($Environment.GameDir){
+  if((Read-Host '是否安装并锁定此版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y'){Install-DownloadedVersion -Source $Content -GameDir $Environment.GameDir|Out-Null;Set-VersionLock -Environment $Environment -Version $Version;Write-StepOk '安装并锁定完成'}
+  } else {
+  $target=(Read-Host '未检测到游戏目录，请输入安装目标目录（直接回车暂不安装）').Trim().Trim('"')
+  if($target){$steam=Resolve-SteamPathForDepot -SteamPath $Environment.SteamPath -Prompt;if([string]::IsNullOrWhiteSpace($steam)){throw '未提供 Steam 根目录，无法创建安装登记'};Install-DownloadedVersion -Source $Content -GameDir $target|Out-Null;$size=Get-DirectoryBytes -Path $target;$latest=(Get-VersionList|Sort-Object {[int64]$_.buildid} -Descending|Select-Object -First 1);$template=Get-BundledAcfTemplate;if([string]::IsNullOrWhiteSpace($template)){throw '内置 ACF 模板缺失，无法创建 Steam 原生安装登记'};$acf=Register-SteamAppManifestFromTemplate -TemplatePath $template -GameDir $target -SteamPath $steam -SizeOnDisk $size|Select-Object -Last 1;Set-ManualGameDirPath -GameDir $target -SkipManifest|Out-Null;$registered=[pscustomobject]@{AcfPath=$acf};Set-VersionLock -Environment $registered -Version $Version;Write-StepOk '安装完成，已使用内置最新 ACF 登记并保存历史版本锁定'}
+ }
+}
+
 function Show-InteractiveMenu {
     while ($true) {
         Clear-Host
@@ -176,6 +186,7 @@ function Show-InteractiveMenu {
         Write-Host (T ' 6) 设置游戏目录（自动识别失败时）' ' 6) Set game directory (manual fallback)')
         Write-Host (T ' 7) 手动锁定版本' ' 7) Lock a version manually')
         Write-Host (T ' 8) Steam 文件完整性验证（临时解锁）' ' 8) Steam file integrity check (temporary unlock)')
+        Write-Host (T ' 9) 解除 Steam 更新状态（恢复内置最新 ACF）' ' 9) Clear Steam update state (restore bundled latest ACF)')
         Write-Host (T ' 0) 退出' ' 0) Exit')
         Write-Host ''
         $choice = Read-Host '请选择'
@@ -188,6 +199,7 @@ function Show-InteractiveMenu {
             '6' { Set-GamePathManually }
             '7' { Show-ManualLock }
             '8' { try{$e=Get-CrimsonDesertEnvironment;if(!(Test-Path (Join-Path $script:RootDir 'state\lock.json'))){Write-StepWarn '当前未锁定，无需临时解锁'}elseif(!$e.AcfPath){Write-StepErr '未找到 ACF'}else{Set-LockFileWritable -AcfPath $e.AcfPath -Writable $true;Write-StepWarn 'ACF 已临时解锁。现在请在 Steam 中执行完整性验证；完成后回到此处按回车重新锁定。';Read-Host '验证完成后按回车'|Out-Null;Reapply-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已重新锁定版本'}}catch{Write-StepErr $_.Exception.Message} }
+            '9' { try{$e=Get-CrimsonDesertEnvironment;if(!$e.AcfPath){throw '未找到 ACF，无法解除 Steam 更新状态'};$template=Get-BundledAcfTemplate;if(!$template){throw '内置最新 ACF 模板缺失'};Restore-BundledLatestAcf -Environment $e -TemplatePath $template|Out-Null;$lockState=Join-Path $script:RootDir 'state\lock.json';if(Test-Path -LiteralPath $lockState){Remove-Item -LiteralPath $lockState -Force};Write-StepOk '已恢复内置最新 ACF，Steam 更新状态已解除';Write-StepInfo '请完全退出并重新启动 Steam，使新的 ACF 状态生效。'}catch{Write-StepErr $_.Exception.Message} }
             '0' { Write-StepOk '再见'; return }
             'q' { Write-StepOk '再见'; return }
             default { Write-StepWarn '无效选择' }
@@ -223,7 +235,7 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
                     if($autoEnv.GameDir -and ((Read-Host '是否现在安装并锁定已下载版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){
                         if(!$target){$target=[pscustomobject]@{id=('build.'+$finished.BuildId);label=('Build '+$finished.BuildId);buildid=[int64]$finished.BuildId;manifest=$finished.Manifest}}
                         Write-StepInfo '开始整目录替换，期间会显示复制进度，请勿关闭窗口。';Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成';$del=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($del -eq 'Y'){Remove-Item -LiteralPath (Split-Path $autoContent -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo '已保留下载缓存: '+$autoContent}
-                    }
+                    } elseif(-not $autoEnv.GameDir){ Complete-DownloadedVersion -Environment $autoEnv -Content $autoContent -Version $target }
                 }
             }
         }

@@ -110,12 +110,12 @@ function Get-ManualGameDirPath {
 }
 
 function Set-ManualGameDirPath {
-    param([Parameter(Mandatory = $true)][string]$GameDir)
+    param([Parameter(Mandatory = $true)][string]$GameDir,[switch]$SkipManifest)
     $GameDir = $GameDir.Trim().Trim('"')
     if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) { throw ('游戏目录不存在: ' + $GameDir) }
     $acf = Join-Path (Join-Path (Split-Path -Parent $GameDir) '..') ('appmanifest_' + $script:AppId + '.acf')
     $acf = [IO.Path]::GetFullPath($acf)
-    if (-not (Test-Path -LiteralPath $acf -PathType Leaf)) { throw ('指定目录旁未找到 Steam ACF: ' + $acf) }
+    if (-not $SkipManifest -and -not (Test-Path -LiteralPath $acf -PathType Leaf)) { throw ('指定目录旁未找到 Steam ACF: ' + $acf) }
     $stateDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'state'
     if (-not (Test-Path -LiteralPath $stateDir)) { New-Item -ItemType Directory -Path $stateDir -Force | Out-Null }
     [pscustomobject]@{ GameDir = [IO.Path]::GetFullPath($GameDir) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stateDir 'game-path.json') -Encoding UTF8
