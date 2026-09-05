@@ -1,5 +1,6 @@
 ﻿# 使用官方 Steam 客户端控制台下载 Depot
 #Requires -Version 3.0
+function Get-StateDir { Join-Path (Split-Path -Parent $PSScriptRoot) 'state' }
 function Get-SteamConsoleCommand {
  param([Parameter(Mandatory)]$Version)
  'download_depot 3321460 3321461 ' + [string]$Version.manifest
@@ -87,17 +88,18 @@ function Get-SteamLogDownloadDetails {
 function Find-ActiveSteamDepotDownload {
  param([string]$SteamPath)
  $log=Get-SteamContentLogPath -SteamPath $SteamPath;if(!$log){return $null}
- $lines=@(Get-Content -LiteralPath $log -Tail 180 -ErrorAction SilentlyContinue);$started=$null;$lastRate=$null
+ $lines=@(Get-Content -LiteralPath $log -Tail 180 -ErrorAction SilentlyContinue);$started=$null;$lastRate=$null;$finish=$null
  foreach($line in $lines){
   if($line -match 'AppID\s+3321460 update started\s*:\s*download\s+(\d+)\/(\d+)'){$started=[pscustomobject]@{Done=[int64]$Matches[1];Total=[int64]$Matches[2];Line=$line}}
   if($line -match 'Current download rate:\s*([\d\.]+)\s*Mbps'){$lastRate=[double]$Matches[1]}
+  if($line -match 'AppID\s+3321460 finished update'){$finish=$line}
  }
- if($started -and $lastRate -gt 0){$started|Add-Member NoteProperty LogPath $log;$started|Add-Member NoteProperty RateMbps $lastRate;$started}
+ if($started -and $lastRate -gt 0 -and (!$finish -or $lines.IndexOf($started.Line) -gt $lines.IndexOf($finish))){$started|Add-Member NoteProperty LogPath $log;$started|Add-Member NoteProperty RateMbps $lastRate;$started}
 }
 function Find-CompletedSteamDepotDownload {
  param([string]$SteamPath)
  $log=Get-SteamContentLogPath -SteamPath $SteamPath;if(!$log){return $null}
- $all=Get-Content -LiteralPath $log -Tail 600 -ErrorAction SilentlyContinue;$line=($all|?{$_ -match 'AppID\s+3321460 finished update,.*BuildID\s+(\d+).*3321461\s+\((\d+)\)' }|Select-Object -Last 1)
+ $all=@(Get-Content -LiteralPath $log -Tail 600 -ErrorAction SilentlyContinue);$lastStart=($all|Select-String 'AppID\s+3321460 update started'|Select-Object -Last 1);$lastFinish=($all|Select-String 'AppID\s+3321460 finished update'|Select-Object -Last 1);$line=$null;if($lastFinish -and (!$lastStart -or [string]$lastFinish.LineNumber -gt [string]$lastStart.LineNumber)){$line=$lastFinish.Line}
  if($line -and $line -match 'BuildID\s+(\d+).*3321461\s+\((\d+)\)'){[pscustomobject]@{BuildId=$Matches[1];Manifest=$Matches[2];LogPath=$log}}
  if(!$line){$start=($all|?{$_ -match 'AppID\s+3321460 update started\s*:\s*download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'}|Select-Object -Last 1);if($start -and $start -match 'download\s+(\d+)\/(\d+).*stage\s+(\d+)\/(\d+)'){$root=Get-ConfiguredDepotRoot -SteamPath $SteamPath;$content=Join-Path $root 'app_3321460\depot_3321461';$size=Get-DirectoryBytes $content;if($size -ge [int64]$Matches[4]){[pscustomobject]@{BuildId='';Manifest='';LogPath=$log;StageTotal=[int64]$Matches[4]}}}}
 }
