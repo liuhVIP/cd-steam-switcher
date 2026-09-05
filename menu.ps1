@@ -121,6 +121,7 @@ function Show-InteractiveMenu {
         Write-Host (T ' 6) 登记当前版本' ' 6) Register current version')
         Write-Host (T ' 7) 探测 manifest' ' 7) Probe manifest')
         Write-Host (T ' 8) 设置' ' 8) Settings')
+        Write-Host (T ' 9) Steam 文件完整性验证（临时解锁）' ' 9) Steam file integrity check (temporary unlock)')
         Write-Host (T ' 0) 退出' ' 0) Exit')
         Write-Host ''
         $choice = Read-Host '请选择'
@@ -133,6 +134,7 @@ function Show-InteractiveMenu {
             '6' { Show-RegisterCurrent }
             '7' { Show-Placeholder 'manifest 探测（请使用 Steam 客户端控制台）' }
             '8' { Show-EngineSettings }
+            '9' { try{$e=Get-CrimsonDesertEnvironment;if(!(Test-Path (Join-Path $script:RootDir 'state\lock.json'))){Write-StepWarn '当前未锁定，无需临时解锁'}elseif(!$e.AcfPath){Write-StepErr '未找到 ACF'}else{Set-LockFileWritable -AcfPath $e.AcfPath -Writable $true;Write-StepWarn 'ACF 已临时解锁。现在请在 Steam 中执行完整性验证；完成后回到此处按回车重新锁定。';Read-Host '验证完成后按回车'|Out-Null;Reapply-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已重新锁定版本'}}catch{Write-StepErr $_.Exception.Message} }
             '0' { Write-StepOk '再见'; return }
             'q' { Write-StepOk '再见'; return }
             default { Write-StepWarn '无效选择' }

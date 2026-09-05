@@ -7,3 +7,7 @@ function Set-VersionLock { param([Parameter(Mandatory)]$Environment,[Parameter(M
 function Clear-VersionLock { param([string]$AcfPath)
  $state=Join-Path (Get-StateDir) 'lock.json';if(Test-Path $AcfPath){Set-FileReadOnly $AcfPath $false};if(Test-Path $state){$s=Get-Content -Raw $state|ConvertFrom-Json;if(Test-Path $s.Backup){Copy-Item $s.Backup $AcfPath -Force};Remove-Item $state -Force};if(Test-Path $AcfPath){Set-FileReadOnly $AcfPath $false}
 }
+function Set-LockFileWritable { param([string]$AcfPath,[bool]$Writable=$true);if(Test-Path $AcfPath){Set-FileReadOnly -Path $AcfPath -ReadOnly (!$Writable)} }
+function Reapply-VersionLock { param([string]$AcfPath)
+ $state=Join-Path (Get-StateDir) 'lock.json';if(!(Test-Path $state)){throw '没有锁定状态'};$s=Get-Content -Raw $state|ConvertFrom-Json;Set-FileReadOnly $AcfPath $false;$n=Read-VdfFile $AcfPath;Set-AcfBuildId $n ([string]$s.BuildId);Set-AcfDepotManifest $n '3321461' ([string]$s.Manifest);Write-VdfFile $AcfPath $n;Set-FileReadOnly $AcfPath $true
+}
