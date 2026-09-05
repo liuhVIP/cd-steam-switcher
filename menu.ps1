@@ -108,6 +108,8 @@ function Show-InteractiveMenu {
         Clear-Host
         Write-Host '==============================================' -ForegroundColor Cyan
         Write-Host (T '   红沙版本切换器 v0.1.0' '   Crimson Desert Version Switcher v0.1.0') -ForegroundColor Cyan
+        Write-Host (T '   开发者：b站up改名_' '   Developer: bilibili UP 改名_') -ForegroundColor DarkGray
+        Write-Host '   GitHub: https://github.com/liuhVIP/cd-steam-switcher' -ForegroundColor DarkGray
         Write-Host '==============================================' -ForegroundColor Cyan
         Write-Host (Get-StatusHeaderText)
         Write-Host ''
