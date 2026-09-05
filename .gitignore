@@ -1,0 +1,6 @@
+state/*
+!state/.gitkeep
+*.log
+*.err
+vendor/*.zip
+depots/

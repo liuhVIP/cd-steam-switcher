@@ -1,0 +1,11 @@
+﻿{
+  "app_id": 3321460,
+  "depot_id": 3321461,
+  "game_dir_name": "Crimson Desert",
+  "versions": [
+    {"id":"2.01.00","label":"2.01.00","release_date":"2026-09-04","buildid":25116796,"manifest":"3540302611239512787","exe_sha256":"4D99C15C58BD20A94D354D10AE395D1FAC777D59EF52CBA8080DC3FC8DC6F454","notes":"当前最新","source":"local-acf","verified":true},
+    {"id":"2.0.02","label":"2.0.02（2.00.x 末版）","release_date":"2026-09-01","buildid":25050808,"manifest":"2880351385118582388","exe_sha256":"","notes":"用户提供 manifest","source":"steam-log","verified":true},
+    {"id":"2.00.01","label":"2.00.01（热修）","release_date":"2026-08-28","buildid":24994088,"manifest":"1352954998473096876","exe_sha256":"","notes":"新闻 hotfix","source":"steam-log","verified":true},
+    {"id":"2.00.00","label":"2.00.00（Enhanced 首版）","release_date":"2026-08-25","buildid":24934353,"manifest":"1623358805547317954","exe_sha256":"","notes":"Enhanced 首版","source":"steamdb-snapshot","verified":true}
+  ]
+}
