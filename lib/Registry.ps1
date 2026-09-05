@@ -9,6 +9,17 @@ function Compare-GameVersion {
 function Test-VersionScope { param([string]$Version);if($Version -notmatch '^(\d+)\.(\d+)(?:\.(\d+))?$'){return $false};$major=[int]$Matches[1];$minor=[int]$Matches[2];return (($major -eq 1 -and $minor -ge 14) -or $major -ge 2) }
 function Read-VersionRegistry { param([string]$Path=(Get-VersionsFilePath)); if(!(Test-Path $Path)){throw "找不到版本登记表: $Path"}; $utf8=New-Object System.Text.UTF8Encoding($false); [System.IO.File]::ReadAllText($Path,$utf8)|ConvertFrom-Json }
 function Save-VersionRegistry { param($Registry,[string]$Path=(Get-VersionsFilePath)); $dir=Split-Path $Path -Parent;if(!(Test-Path $dir)){New-Item -ItemType Directory $dir -Force|Out-Null}; $utf8=New-Object System.Text.UTF8Encoding($true); [IO.File]::WriteAllText($Path,($Registry|ConvertTo-Json -Depth 8),$utf8) }
+function Merge-VersionRegistryFile {
+ param([Parameter(Mandatory)][string]$UpdatePath,[string]$Path=(Get-VersionsFilePath))
+ if(!(Test-Path $UpdatePath)){throw "找不到更新 JSON: $UpdatePath"}
+ $base=Read-VersionRegistry $Path;$update=Get-Content -Raw -LiteralPath $UpdatePath|ConvertFrom-Json;$items=@($base.versions)
+ foreach($entry in @($update.versions)){
+  if(!$entry.manifest -or !$entry.buildid){continue}
+  $same=@($items|?{[string]$_.manifest -eq [string]$entry.manifest -or [string]$_.buildid -eq [string]$entry.buildid})
+  if($same.Count -eq 0){$items+=$entry}else{$items[$items.IndexOf($same[0])]=$entry}
+ }
+ $base.versions=$items;Save-VersionRegistry $base $Path;return $base
+}
 function Get-VersionList { param([string]$Path=(Get-VersionsFilePath)); $r=Read-VersionRegistry $Path; $items=@($r.versions|?{(Test-VersionScope $_.id) -or ([string]$_.id -like 'build.*')}); $items|Sort-Object @{e={[int64]$_.buildid};Descending=$true} }
 function Find-VersionByManifest { param([string]$Manifest,[string]$Path=(Get-VersionsFilePath)); @(Read-VersionRegistry $Path).versions|?{[string]$_.manifest -eq $Manifest}|Select-Object -First 1 }
 function Find-VersionByBuild { param([string]$BuildId,[string]$Path=(Get-VersionsFilePath)); @(Read-VersionRegistry $Path).versions|?{[string]$_.buildid -eq $BuildId}|Select-Object -First 1 }
