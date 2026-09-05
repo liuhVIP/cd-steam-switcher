@@ -95,7 +95,8 @@ function Find-ActiveSteamDepotDownload {
   if($line -match 'Current download rate:\s*([\d\.]+)\s*Mbps'){$lastRate=[double]$Matches[1]}
   if($line -match 'AppID\s+3321460 finished update'){$finish=$line}
  }
- if($started -and $lastRate -gt 0 -and (!$finish -or $lines.IndexOf($started.Line) -gt $lines.IndexOf($finish))){$started|Add-Member NoteProperty LogPath $log;$started|Add-Member NoteProperty RateMbps $lastRate;$started}
+ $manual=$false;$console=Get-SteamConsoleLogPath -SteamPath $SteamPath;if($console){$manual=@(Get-Content $console -Tail 120|?{$_ -match 'download_depot\s+3321460\s+3321461'}).Count -gt 0}
+ if($manual -and $started -and $lastRate -gt 0 -and (!$finish -or $lines.IndexOf($started.Line) -gt $lines.IndexOf($finish))){$root=Get-ConfiguredDepotRoot -SteamPath $SteamPath;$content=Join-Path $root 'app_3321460\depot_3321461';if(Test-SteamDepotDownloaded $content){$started|Add-Member NoteProperty LogPath $log;$started|Add-Member NoteProperty RateMbps $lastRate;$started}}
 }
 function Find-CompletedSteamDepotDownload {
  param([string]$SteamPath)
