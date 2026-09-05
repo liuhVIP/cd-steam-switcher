@@ -94,6 +94,12 @@ function Find-ActiveSteamDepotDownload {
  }
  if($started -and $lastRate -gt 0){$started|Add-Member NoteProperty LogPath $log;$started|Add-Member NoteProperty RateMbps $lastRate;$started}
 }
+function Find-CompletedSteamDepotDownload {
+ param([string]$SteamPath)
+ $log=Get-SteamContentLogPath -SteamPath $SteamPath;if(!$log){return $null}
+ $line=(Get-Content -LiteralPath $log -Tail 400 -ErrorAction SilentlyContinue|?{$_ -match 'AppID\s+3321460 finished update,.*BuildID\s+(\d+).*3321461\s+\((\d+)\)' }|Select-Object -Last 1)
+ if($line -and $line -match 'BuildID\s+(\d+).*3321461\s+\((\d+)\)'){[pscustomobject]@{BuildId=$Matches[1];Manifest=$Matches[2];LogPath=$log}}
+}
 function Get-EstimatedGameSize {
  param([string]$GameDir)
  $bytes=Get-DirectoryBytes $GameDir
@@ -110,7 +116,7 @@ function Get-SteamDepotResumeInfo {
  [pscustomobject]@{Exists=(Test-Path $Path);Files=if(Test-Path $Path){@(Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue).Count}else{0};Bytes=(Get-DirectoryBytes $Path)}
 }
 function Wait-SteamDepotDownload {
- param([Parameter(Mandatory)][string]$Path,[Int64]$EstimatedTotalBytes = 148GB,[string]$SteamLogPath)
+ param([Parameter(Mandatory)][string]$Path,[Int64]$EstimatedTotalBytes = 148GB,[string]$SteamLogPath,[string]$TargetManifest)
  if([string]::IsNullOrWhiteSpace($SteamLogPath)){try{$SteamLogPath=Get-SteamContentLogPath -SteamPath (Get-SteamInstallPath)}catch{}}
  $start=Get-Date;$lastBytes=[int64]0;$lastTime=Get-Date;$emptyTicks=0;$history=New-Object System.Collections.Generic.Queue[object]
  Write-Host '正在监控 Steam 下载；Steam 控制台会显示官方状态，工具窗口显示本地写入进度。' -ForegroundColor Cyan
@@ -118,8 +124,9 @@ function Wait-SteamDepotDownload {
  while($true){
   try { if([Console]::KeyAvailable){$k=[Console]::ReadKey($true);if($k.Key -eq 'Enter'){break}} } catch { }
   $now=Get-Date;$bytes=[Int64](Get-DirectoryBytes $Path);$files=if(Test-Path $Path){@(Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue).Count}else{0};$history.Enqueue([pscustomobject]@{Time=$now;Bytes=$bytes});while($history.Count -gt 1 -and (($now-$history.Peek().Time).TotalSeconds -gt 15)){$history.Dequeue()|Out-Null};$base=$history.Peek();$seconds=[Math]::Max(1,($now-$base.Time).TotalSeconds);$rate=[Int64](($bytes-$base.Bytes)/$seconds);$elapsed=($now-$start).ToString('hh\:mm\:ss');$estimate=$EstimatedTotalBytes;$percent=if($estimate -gt 0){[Math]::Min(99,[Math]::Max(0,($bytes/$estimate*100)))}else{0};$steam=if($SteamLogPath){Get-SteamLogDownloadStats $SteamLogPath};if($steam -and $steam.TotalBytes -gt 0){$estimate=$steam.TotalBytes;$effectiveDone=[Math]::Max([Int64]$bytes,[Int64]$steam.DoneBytes);$percent=[Math]::Min(99,($effectiveDone/$estimate*100));if($steam.RateMbps -gt 0){$rate=[Int64]($steam.RateMbps*1000000/8)}}
+  if($SteamLogPath -and (Test-Path $SteamLogPath)){$tail=Get-Content -LiteralPath $SteamLogPath -Tail 80 -ErrorAction SilentlyContinue;$doneLine=$tail|Where-Object{$_ -match 'AppID\s+3321460 finished update' -and (!$TargetManifest -or $_ -match [regex]::Escape($TargetManifest))}|Select-Object -Last 1;if($doneLine){$percent=100;$rate=0}}
   $tag=if($steam -and $steam.TotalBytes -gt 0){'Steam总量+本地进度'}else{'估算'};Write-Progress -Activity ('Steam 官方下载（'+$tag+'）') -Status (('{0}  {1:N1}%  已下载 {2} / {3}  速度 {4}/s  文件 {5}' -f $elapsed,$percent,(Format-Bytes -Bytes $bytes),(Format-Bytes -Bytes $estimate),(Format-Bytes -Bytes $rate),$files)) -PercentComplete $percent
-  if($bytes -eq 0){$emptyTicks++;if($emptyTicks -eq 15){Write-Host '';Write-StepWarn '30 秒内未检测到文件：请确认 Steam 控制台已粘贴命令并按 Enter 执行。'}}else{$emptyTicks=0};$lastBytes=$bytes;$lastTime=$now;Start-Sleep -Seconds 2
+  if($doneLine){break};if($bytes -eq 0){$emptyTicks++;if($emptyTicks -eq 15){Write-Host '';Write-StepWarn '30 秒内未检测到文件：请确认 Steam 控制台已粘贴命令并按 Enter 执行。'}}else{$emptyTicks=0};$lastBytes=$bytes;$lastTime=$now;Start-Sleep -Seconds 2
  }
  Write-Progress -Activity 'Steam 官方下载' -Completed
  return [pscustomobject]@{Bytes=(Get-DirectoryBytes $Path);Files=if(Test-Path $Path){@(Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue).Count}else{0};Elapsed=(Get-Date)-$start}

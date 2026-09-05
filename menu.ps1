@@ -152,6 +152,19 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
             $autoContent=Join-Path $autoRoot 'app_3321460\depot_3321461'
             Write-StepInfo ('检测到 Steam 正在下载 Depot，自动接续监控: '+$autoContent)
             Wait-SteamDepotDownload -Path $autoContent -EstimatedTotalBytes $activeTask.Total -SteamLogPath $activeTask.LogPath|Out-Null
+        } else {
+            $finished=Find-CompletedSteamDepotDownload -SteamPath $autoEnv.SteamPath
+            if($finished){
+                $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath;$autoContent=Join-Path $autoRoot 'app_3321460\depot_3321461'
+                if(Test-SteamDepotDownloaded $autoContent){
+                    Write-StepOk ('检测到已完成下载: Build '+$finished.BuildId+' / manifest '+$finished.Manifest)
+                    $target=Find-VersionByManifest -Manifest $finished.Manifest
+                    if($autoEnv.GameDir -and ((Read-Host '是否现在安装并锁定已下载版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){
+                        if(!$target){$target=[pscustomobject]@{id=('build.'+$finished.BuildId);label=('Build '+$finished.BuildId);buildid=[int64]$finished.BuildId;manifest=$finished.Manifest}}
+                        Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成'
+                    }
+                }
+            }
         }
     } catch { Write-StepWarn ('自动接续检查失败: '+$_.Exception.Message) }
     Show-InteractiveMenu
