@@ -101,6 +101,7 @@ function Show-RegisterCurrent {
     try { Register-VersionEntry ([pscustomobject]@{id=$label;label=$label;release_date=(Get-Date -Format yyyy-MM-dd);buildid=[int64]$e.BuildId;manifest=$e.DepotManifest;exe_sha256='';notes='本地安装登记';source='local-acf';verified=$true})|Out-Null;Write-StepOk '登记成功' } catch { Write-StepErr $_.Exception.Message }
 }
 function Show-EngineSettings { Write-Host 'Steam 客户端控制台模式无需单独登录；请选择 0 返回';Read-Host '按回车返回'|Out-Null }
+function Confirm-DeleteDownload { param([string]$Path);$answer=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($answer -eq 'Y' -and (Test-Path $Path)){Remove-Item -LiteralPath (Split-Path $Path -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo ('已保留下载缓存: '+$Path)} }
 
 function Show-InteractiveMenu {
     while ($true) {
@@ -164,7 +165,7 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
                     Write-Host ('路径: '+$autoContent) -ForegroundColor Cyan
                     if($autoEnv.GameDir -and ((Read-Host '是否现在安装并锁定已下载版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){
                         if(!$target){$target=[pscustomobject]@{id=('build.'+$finished.BuildId);label=('Build '+$finished.BuildId);buildid=[int64]$finished.BuildId;manifest=$finished.Manifest}}
-                        Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成'
+                        Install-DownloadedVersion -Source $autoContent -GameDir $autoEnv.GameDir|Out-Null;Set-VersionLock -Environment $autoEnv -Version $target;Write-StepOk '安装并锁定完成';$del=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($del -eq 'Y'){Remove-Item -LiteralPath (Split-Path $autoContent -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo '已保留下载缓存: '+$autoContent}
                     }
                 }
             }
