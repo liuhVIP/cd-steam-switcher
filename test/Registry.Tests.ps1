@@ -10,5 +10,5 @@ Assert-True (-not (Test-VersionScope '1.12.00')) '1.x 排除'
 Assert-Equal 1 (Compare-GameVersion '2.01.00' '2.00.01') '版本比较'
 Assert-Equal 0 (Compare-GameVersion '2.0.02' '2.00.02') '补零比较'
 $m=Find-VersionByManifest -Manifest '2880351385118582388' -Path (Join-Path $PSScriptRoot '..\versions.json')
-Assert-Equal '2.0.02' $m.id '按 manifest 查找'
+Assert-Equal '2.00.02' $m.id '按 manifest 查找'
 Complete-TestRun

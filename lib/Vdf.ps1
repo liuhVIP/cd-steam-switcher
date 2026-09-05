@@ -98,7 +98,9 @@ function ConvertFrom-VdfText {
 }
 
 function ConvertTo-VdfEscaped {
-    param([Parameter(Mandatory = $true)][string]$Value)
+    # Steam 的 VDF 允许空字符串值；不要让参数绑定阶段拒绝用户 ACF 中的空字段。
+    param([AllowEmptyString()][string]$Value)
+    if ($null -eq $Value) { $Value = '' }
     return $Value.Replace('\', '\\').Replace('"', '\"')
 }
 

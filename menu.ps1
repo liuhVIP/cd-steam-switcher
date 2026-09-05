@@ -17,6 +17,14 @@ $script:RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:RootDir 'lib\SteamConsole.ps1')
 Set-ConsoleEncoding
 
+function Get-ToolVersion {
+    try {
+        $data = Read-VersionRegistry
+        if ($data.tool_version) { return [string]$data.tool_version }
+    } catch { }
+    return '1.0.0'
+}
+
 function Get-LockStateText {
     $lockFile = Join-Path $script:RootDir 'state\lock.json'
     if (Test-Path -LiteralPath $lockFile -PathType Leaf) {
@@ -70,6 +78,7 @@ function Show-Doctor {
         Write-StepInfo ('ACF 只读: ' + $(if ($env2.AcfReadOnly) { '是' } else { '否' }))
     } else {
         Write-StepWarn '未检测到游戏 ACF。请确认：1) 本机已安装并登录 Steam；2) 账号拥有并已安装 Crimson Desert；3) 以同一 Windows 用户运行。'
+        Write-StepInfo '如果 Steam 库位于已断开磁盘或 ACF 无法自动识别，请返回菜单选择“8) 设置游戏目录（自动识别失败时）”手动指定。'
     }
 
     if ($env2.ActiveUser) {
@@ -78,11 +87,6 @@ function Show-Doctor {
         Write-StepWarn '未找到 Steam 登录账号（可能未登录或 loginusers.vdf 缺失）。'
     }
     Write-Host ''
-}
-
-function Show-Placeholder {
-    param([string]$ItemName)
-    Write-StepWarn ($ItemName + '：该功能在后续 Sprint 实现（见 steam-version-switcher-plan.md），当前仅为界面骨架。')
 }
 
 function Show-Versions {
@@ -101,40 +105,89 @@ function Show-RegisterCurrent {
     try { Register-VersionEntry ([pscustomobject]@{id=$label;label=$label;release_date=(Get-Date -Format yyyy-MM-dd);buildid=[int64]$e.BuildId;manifest=$e.DepotManifest;exe_sha256='';notes='本地安装登记';source='local-acf';verified=$true})|Out-Null;Write-StepOk '登记成功' } catch { Write-StepErr $_.Exception.Message }
 }
 function Show-EngineSettings { Write-Host 'Steam 客户端控制台模式无需单独登录；请选择 0 返回';Read-Host '按回车返回'|Out-Null }
+function Set-GamePathManually {
+    $current = Get-ManualGameDirPath
+    if ($current) { Write-StepInfo ('当前手动游戏目录: ' + $current) }
+    $path = Read-Host '输入 Crimson Desert 游戏目录（直接回车取消）'
+    if ([string]::IsNullOrWhiteSpace($path)) { return }
+    try { $saved = Set-ManualGameDirPath -GameDir $path; Write-StepOk ('已保存游戏目录: ' + $saved) }
+    catch { Write-StepErr $_.Exception.Message }
+}
+function Show-ManualLock {
+    try {
+        $e=Get-CrimsonDesertEnvironment
+        if(!$e.AcfPath){throw '未找到 ACF，无法锁定版本'}
+        if([string]::IsNullOrWhiteSpace($e.BuildId) -or [string]::IsNullOrWhiteSpace($e.DepotManifest)){throw '当前 ACF 缺少 BuildID 或 manifest，无法锁定'}
+        $found=Find-VersionByManifest -Manifest $e.DepotManifest
+        $label=if($found){$found.label}else{'未知版本'}
+        Write-Host '将锁定当前已安装版本：' -ForegroundColor Cyan
+        Write-Host ('  版本: '+$label)
+        Write-Host ('  Build: '+$e.BuildId)
+        Write-Host ('  Manifest: '+$e.DepotManifest)
+        Write-Host ('  游戏目录: '+$e.GameDir)
+        if((Read-Host '确认锁定当前版本？(Y/N)').Trim().ToUpperInvariant() -ne 'Y'){return}
+        $v=if($found){$found}else{[pscustomobject]@{id=('build.'+$e.BuildId);label=$label;buildid=$e.BuildId;manifest=$e.DepotManifest}}
+        Set-VersionLock -Environment $e -Version $v
+        Write-StepOk ('已锁定当前版本: '+$label)
+    } catch { Write-StepErr $_.Exception.Message }
+}
+function Ensure-GameEnvironment {
+    $env2 = Get-CrimsonDesertEnvironment
+    if ($env2.AcfFound) { return $env2 }
+    Write-StepWarn '自动未找到 Crimson Desert 安装位置。已有游戏可输入路径；没有安装游戏请输入 N，仍可下载指定版本。'
+    while ($true) {
+        $path = Read-Host '请输入 Crimson Desert 游戏目录（没有安装游戏请输入 N）'
+        if ($path.Trim().ToUpperInvariant() -eq 'N') {
+            Write-StepInfo '按无游戏模式继续；可下载指定版本，但低空间模式和安装锁定需先设置游戏目录。'
+            return $env2
+        }
+        if ([string]::IsNullOrWhiteSpace($path)) { Write-StepWarn '未设置游戏目录；相关操作可能无法使用。'; return $env2 }
+        try {
+            Set-ManualGameDirPath -GameDir $path | Out-Null
+            $env2 = Get-CrimsonDesertEnvironment
+            if ($env2.AcfFound) {
+                Write-StepOk ('已识别并保存游戏目录: ' + $env2.GameDir)
+                return $env2
+            }
+            Write-StepErr '路径已保存，但仍未找到有效的 appmanifest_3321460.acf，请确认输入的是游戏目录。'
+        } catch {
+            Write-StepErr $_.Exception.Message
+        }
+    }
+}
 function Confirm-DeleteDownload { param([string]$Path);$answer=(Read-Host '是否删除已下载的 Depot 文件？默认保留（Y 删除 / N 保留）').Trim().ToUpperInvariant();if($answer -eq 'Y' -and (Test-Path $Path)){Remove-Item -LiteralPath (Split-Path $Path -Parent) -Recurse -Force;Write-StepOk '已删除下载缓存'}else{Write-StepInfo ('已保留下载缓存: '+$Path)} }
 
 function Show-InteractiveMenu {
     while ($true) {
         Clear-Host
         Write-Host '==============================================' -ForegroundColor Cyan
-        Write-Host (T '   红沙版本切换器 v0.1.0' '   Crimson Desert Version Switcher v0.1.0') -ForegroundColor Cyan
-        Write-Host (T '   开发者：b站up改名_' '   Developer: bilibili UP 改名_') -ForegroundColor DarkGray
+        $toolVersion = Get-ToolVersion
+        Write-Host (T ('   红沙版本切换器 v' + $toolVersion) ('   Crimson Desert Version Switcher v' + $toolVersion)) -ForegroundColor Cyan
+        Write-Host (T '   开发者：b站up改名_' '   Developer: b站up改名_') -ForegroundColor DarkGray
         Write-Host '   GitHub: https://github.com/liuhVIP/cd-steam-switcher' -ForegroundColor DarkGray
         Write-Host '==============================================' -ForegroundColor Cyan
         Write-Host (Get-StatusHeaderText)
         Write-Host ''
         Write-Host (T ' 1) 查看/检测当前版本与 Steam 环境' ' 1) Check game and Steam environment')
         Write-Host (T ' 2) 选择并下载历史版本（2.0x 列表 + 下载进度）' ' 2) Download a historical version (2.x)')
-        Write-Host (T ' 3) 切换到最新版本' ' 3) Switch to latest version')
-        Write-Host (T ' 4) 解锁并恢复 Steam 最新版' ' 4) Unlock and restore Steam latest')
-        Write-Host (T ' 5) 锁定状态 / 开始游戏' ' 5) Lock status / launch game')
-        Write-Host (T ' 6) 登记当前版本' ' 6) Register current version')
-        Write-Host (T ' 7) 探测 manifest' ' 7) Probe manifest')
-        Write-Host (T ' 8) 设置' ' 8) Settings')
-        Write-Host (T ' 9) Steam 文件完整性验证（临时解锁）' ' 9) Steam file integrity check (temporary unlock)')
+        Write-Host (T ' 3) 解锁并恢复 Steam 最新版' ' 3) Unlock and restore Steam latest')
+        Write-Host (T ' 4) 锁定状态 / 开始游戏' ' 4) Lock status / launch game')
+        Write-Host (T ' 5) 登记当前版本' ' 5) Register current version')
+        Write-Host (T ' 6) 设置游戏目录（自动识别失败时）' ' 6) Set game directory (manual fallback)')
+        Write-Host (T ' 7) 手动锁定版本' ' 7) Lock a version manually')
+        Write-Host (T ' 8) Steam 文件完整性验证（临时解锁）' ' 8) Steam file integrity check (temporary unlock)')
         Write-Host (T ' 0) 退出' ' 0) Exit')
         Write-Host ''
         $choice = Read-Host '请选择'
         switch ($choice.Trim().ToLowerInvariant()) {
             '1' { Show-Doctor }
-            '2' { $v=Show-Versions; if($v){try{$e=Get-CrimsonDesertEnvironment;$root=Select-DownloadDrive -RequiredBytes 150GB;Set-DepotDownloadRoot -SteamPath $e.SteamPath -Root $root|Out-Null;$cmd=Get-SteamConsoleCommand $v;$content=Join-Path $root ('app_3321460\depot_3321461');$estimate=Get-EstimatedGameSize -GameDir $e.GameDir;if($estimate -gt 0){Write-StepInfo ('总体积估算依据当前游戏目录: '+(Format-Bytes -Bytes $estimate))}else{$estimate=148GB;Write-StepWarn '无法读取当前游戏大小，使用默认估算 148 GB。'};Write-Host '';Write-StepInfo ('下载内容目录: '+$content);Write-StepInfo '请在 Steam 控制台粘贴并执行以下命令:';Write-Host $cmd -ForegroundColor Yellow;if(Copy-SteamConsoleCommand $cmd){Write-StepInfo '命令已复制到剪贴板，请在 Steam 控制台按 Ctrl+V，再按 Enter。'}else{Write-StepWarn '自动复制失败，请手动复制上面的命令。'};Start-SteamConsole -SteamPath $e.SteamPath;Read-Host '确认已在 Steam 控制台按 Enter 执行命令后，回到此处按回车开始监控'|Out-Null;Wait-SteamDepotDownload -Path $content -EstimatedTotalBytes $estimate|Out-Null;if(Test-SteamDepotDownloaded $content){Write-StepOk ('检测到下载内容: '+$content);if($e.GameDir -and ((Read-Host '是否安装并锁定此版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){Install-DownloadedVersion -Source $content -GameDir $e.GameDir|Out-Null;Set-VersionLock -Environment $e -Version $v;Write-StepOk '安装并锁定完成'}}else{Write-StepWarn '尚未检测到 Depot 文件，请确认 Steam 控制台命令已执行并下载完成'}}catch{Write-StepErr $_.Exception.Message}} }
-            '3' { $v=(Get-VersionList|Select-Object -First 1);if($v){Write-StepInfo ('最新登记版本: '+$v.label);Show-Placeholder '切换到最新版本（需 Steam 更新）'} }
-            '4' { try{$e=Get-CrimsonDesertEnvironment;if($e.AcfPath){Clear-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已解锁并恢复 ACF'}else{Write-StepWarn '未找到 ACF'}}catch{Write-StepErr $_.Exception.Message} }
-            '5' { $s=Join-Path $script:RootDir 'state\lock.json';if(Test-Path $s){Write-StepInfo ('锁定状态: '+(Get-Content -Raw $s))}else{Write-StepInfo '当前未锁定'} }
-            '6' { Show-RegisterCurrent }
-            '7' { Show-Placeholder 'manifest 探测（请使用 Steam 客户端控制台）' }
-            '8' { Show-EngineSettings }
-            '9' { try{$e=Get-CrimsonDesertEnvironment;if(!(Test-Path (Join-Path $script:RootDir 'state\lock.json'))){Write-StepWarn '当前未锁定，无需临时解锁'}elseif(!$e.AcfPath){Write-StepErr '未找到 ACF'}else{Set-LockFileWritable -AcfPath $e.AcfPath -Writable $true;Write-StepWarn 'ACF 已临时解锁。现在请在 Steam 中执行完整性验证；完成后回到此处按回车重新锁定。';Read-Host '验证完成后按回车'|Out-Null;Reapply-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已重新锁定版本'}}catch{Write-StepErr $_.Exception.Message} }
+            '2' { $v=Show-Versions; if($v){try{$e=Get-CrimsonDesertEnvironment;$root=Select-DownloadDrive -RequiredBytes 150GB -GameDir $e.GameDir;$root=Set-DepotDownloadRoot -SteamPath $e.SteamPath -Root $root -Force:$script:DirectReplaceMode;$cmd=Get-SteamConsoleCommand $v;$content=Join-Path $root ('app_3321460\depot_3321461');$estimate=Get-EstimatedGameSize -GameDir $e.GameDir;if($estimate -gt 0){Write-StepInfo ('总体积估算依据当前游戏目录: '+(Format-Bytes -Bytes $estimate))}else{$estimate=148GB;Write-StepWarn '无法读取当前游戏大小，使用默认估算 148 GB。'};Write-Host '';Write-StepInfo ('下载内容目录: '+$content);Write-StepInfo '请在 Steam 控制台粘贴并执行以下命令:';Write-Host $cmd -ForegroundColor Yellow;if(Copy-SteamConsoleCommand $cmd){Write-StepInfo '命令已复制到剪贴板，请在 Steam 控制台按 Ctrl+V，再按 Enter。'}else{Write-StepWarn '自动复制失败，请手动复制上面的命令。'};Start-SteamConsole -SteamPath $e.SteamPath;Read-Host '确认已在 Steam 控制台按 Enter 执行命令后，回到此处按回车开始监控'|Out-Null;$wait=Wait-SteamDepotDownload -Path $content -EstimatedTotalBytes $estimate -TargetManifest $v.manifest;if($wait.CompletedPath){$content=$wait.CompletedPath;Write-StepOk ('Steam 日志确认下载完成: '+$content)};if(Test-SteamDepotDownloaded $content){Write-StepOk ('检测到下载内容: '+$content);if($e.GameDir -and ((Read-Host '是否安装并锁定此版本？(Y/N)').Trim().ToUpperInvariant() -eq 'Y')){Install-DownloadedVersion -Source $content -GameDir $e.GameDir|Out-Null;Set-VersionLock -Environment $e -Version $v;Write-StepOk '安装并锁定完成'}}else{Write-StepWarn '尚未检测到 Depot 文件，请确认 Steam 控制台命令已执行并下载完成'}}catch{Write-StepErr $_.Exception.Message}} }
+            '3' { try{$e=Get-CrimsonDesertEnvironment;if($e.AcfPath){Clear-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已解锁并恢复 ACF'}else{Write-StepWarn '未找到 ACF'}}catch{Write-StepErr $_.Exception.Message} }
+            '4' { $s=Join-Path $script:RootDir 'state\lock.json';if(Test-Path $s){Write-StepInfo ('锁定状态: '+(Get-Content -Raw $s))}else{Write-StepInfo '当前未锁定'} }
+            '5' { Show-RegisterCurrent }
+            '6' { Set-GamePathManually }
+            '7' { Show-ManualLock }
+            '8' { try{$e=Get-CrimsonDesertEnvironment;if(!(Test-Path (Join-Path $script:RootDir 'state\lock.json'))){Write-StepWarn '当前未锁定，无需临时解锁'}elseif(!$e.AcfPath){Write-StepErr '未找到 ACF'}else{Set-LockFileWritable -AcfPath $e.AcfPath -Writable $true;Write-StepWarn 'ACF 已临时解锁。现在请在 Steam 中执行完整性验证；完成后回到此处按回车重新锁定。';Read-Host '验证完成后按回车'|Out-Null;Reapply-VersionLock -AcfPath $e.AcfPath;Write-StepOk '已重新锁定版本'}}catch{Write-StepErr $_.Exception.Message} }
             '0' { Write-StepOk '再见'; return }
             'q' { Write-StepOk '再见'; return }
             default { Write-StepWarn '无效选择' }
@@ -148,19 +201,19 @@ if ($Doctor -or $Action -in @('doctor', 'info', '检测')) {
     Show-Doctor
 } else {
     try {
-        $autoEnv=Get-CrimsonDesertEnvironment
+        $autoEnv=Ensure-GameEnvironment
         $autoLog=Get-SteamContentLogPath -SteamPath $autoEnv.SteamPath
         if($autoEnv.AcfFound){Sync-VersionRegistryFromEnvironment -Environment $autoEnv -LogPath $autoLog|Out-Null}
         $activeTask=Find-ActiveSteamDepotDownload -SteamPath $autoEnv.SteamPath
         if($activeTask){
-            $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath
-            $autoContent=Join-Path $autoRoot 'app_3321460\depot_3321461'
+            $autoContent=Get-SteamDepotDownloadPath -SteamPath $autoEnv.SteamPath
+            if($activeTask.CompletedPath){$autoContent=$activeTask.CompletedPath}
             Write-StepInfo ('检测到 Steam 正在下载 Depot，自动接续监控: '+$autoContent)
             Wait-SteamDepotDownload -Path $autoContent -EstimatedTotalBytes $activeTask.Total -SteamLogPath $activeTask.LogPath|Out-Null
         } else {
             $finished=Find-CompletedSteamDepotDownload -SteamPath $autoEnv.SteamPath
             if($finished){
-                $autoRoot=Get-ConfiguredDepotRoot -SteamPath $autoEnv.SteamPath;$configuredContent=Join-Path $autoRoot 'app_3321460\depot_3321461';$autoContent=if(Test-SteamDepotDownloaded $configuredContent){$configuredContent}elseif($finished.CompletedPath){$finished.CompletedPath}else{$configuredContent}
+                $configuredContent=Get-SteamDepotDownloadPath -SteamPath $autoEnv.SteamPath;$autoContent=if(Test-SteamDepotDownloaded $configuredContent){$configuredContent}elseif($finished.CompletedPath){$finished.CompletedPath}else{$configuredContent}
                 if(Test-SteamDepotDownloaded $autoContent){
                     $target=Find-VersionByManifest -Manifest $finished.Manifest
                     $versionText=if($target){$target.label}else{'未知版本'};$buildText=if($target){$target.buildid}else{$finished.BuildId};$manifestText=if($target){$target.manifest}else{$finished.Manifest}

@@ -24,3 +24,4 @@ Merge-VersionRegistryFile -UpdatePath .\new-versions.json
 ```
 
 程序启动时仍会从本机 Steam ACF 和 `content_log.txt` 自动补登记未知 Build/Manifest。
+`tool_version`：工具自身版本号。主菜单会从 `versions.json` 读取该字段；发布打包时使用同一版本号命名压缩包。

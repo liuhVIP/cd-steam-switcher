@@ -75,7 +75,16 @@ function Find-AppManifestAcf {
     )
     foreach ($lib in $LibraryPaths) {
         if ([string]::IsNullOrWhiteSpace($lib)) { continue }
-        $candidate = Join-Path $lib ('steamapps\appmanifest_' + $AppId + '.acf')
+        # Steam libraryfolders.vdf can retain entries for unplugged drives.
+        # Join-Path throws when the drive itself does not exist, which used to
+        # abort environment detection for the whole menu.  Ignore such stale
+        # libraries and continue scanning the remaining entries.
+        try {
+            if (-not (Test-Path -LiteralPath $lib)) { continue }
+            $candidate = Join-Path $lib ('steamapps\appmanifest_' + $AppId + '.acf')
+        } catch {
+            continue
+        }
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
             return [pscustomobject]@{
                 LibraryDir   = $lib
@@ -85,6 +94,37 @@ function Find-AppManifestAcf {
         }
     }
     return $null
+}
+
+function Get-ManualGameDirPath {
+    $stateDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'state'
+    $path = Join-Path $stateDir 'game-path.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try {
+        $saved = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+        if ($saved.GameDir -and (Test-Path -LiteralPath ([string]$saved.GameDir) -PathType Container)) {
+            return [string]$saved.GameDir
+        }
+    } catch { }
+    return $null
+}
+
+function Set-ManualGameDirPath {
+    param([Parameter(Mandatory = $true)][string]$GameDir)
+    $GameDir = $GameDir.Trim().Trim('"')
+    if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) { throw ('游戏目录不存在: ' + $GameDir) }
+    $acf = Join-Path (Join-Path (Split-Path -Parent $GameDir) '..') ('appmanifest_' + $script:AppId + '.acf')
+    $acf = [IO.Path]::GetFullPath($acf)
+    if (-not (Test-Path -LiteralPath $acf -PathType Leaf)) { throw ('指定目录旁未找到 Steam ACF: ' + $acf) }
+    $stateDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'state'
+    if (-not (Test-Path -LiteralPath $stateDir)) { New-Item -ItemType Directory -Path $stateDir -Force | Out-Null }
+    [pscustomobject]@{ GameDir = [IO.Path]::GetFullPath($GameDir) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stateDir 'game-path.json') -Encoding UTF8
+    return [IO.Path]::GetFullPath($GameDir)
+}
+
+function Clear-ManualGameDirPath {
+    $path = Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'state') 'game-path.json'
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
 }
 
 # ---- 账号识别 ----
@@ -181,6 +221,18 @@ function Get-CrimsonDesertEnvironment {
     $libPaths = @($libraries | ForEach-Object { $_.Path })
 
     $acfInfo = Find-AppManifestAcf -AppId $script:AppId -LibraryPaths $libPaths
+    if (-not $acfInfo) {
+        $manualGameDir = Get-ManualGameDirPath
+        if ($manualGameDir) {
+            try {
+                $manualAcf = [IO.Path]::GetFullPath((Join-Path (Join-Path (Split-Path -Parent $manualGameDir) '..') ('appmanifest_' + $script:AppId + '.acf')))
+                if (Test-Path -LiteralPath $manualAcf -PathType Leaf) {
+                    $steamApps = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $manualGameDir) '..'))
+                    $acfInfo = [pscustomobject]@{ LibraryDir = (Split-Path -Parent $steamApps); SteamAppsDir = $steamApps; AcfPath = $manualAcf }
+                }
+            } catch { }
+        }
+    }
     $node = $null
     $acfPath = $null
     if ($acfInfo) {
