@@ -106,19 +106,19 @@ function Show-InteractiveMenu {
     while ($true) {
         Clear-Host
         Write-Host '==============================================' -ForegroundColor Cyan
-        Write-Host '   红沙版本切换器 v0.1.0（Sprint 1 骨架）' -ForegroundColor Cyan
+        Write-Host (T '   红沙版本切换器 v0.1.0' '   Crimson Desert Version Switcher v0.1.0') -ForegroundColor Cyan
         Write-Host '==============================================' -ForegroundColor Cyan
         Write-Host (Get-StatusHeaderText)
         Write-Host ''
-        Write-Host ' 1) 查看/检测当前版本与 Steam 环境'
-        Write-Host ' 2) 选择并下载历史版本（2.0x 列表 + 下载进度）'
-        Write-Host ' 3) 切换到最新版本（自动识别并锁定）'
-        Write-Host ' 4) 解锁并恢复 Steam 最新版'
-        Write-Host ' 5) 锁定状态 / 用锁定启动器开始游戏'
-        Write-Host ' 6) 登记当前版本 / 手动补充带版本号条目'
-        Write-Host ' 7) 探测一个 manifest'
-        Write-Host ' 8) 设置（登录、注销登录、下载目录、引擎）'
-        Write-Host ' 0) 退出'
+        Write-Host (T ' 1) 查看/检测当前版本与 Steam 环境' ' 1) Check game and Steam environment')
+        Write-Host (T ' 2) 选择并下载历史版本（2.0x 列表 + 下载进度）' ' 2) Download a historical version (2.x)')
+        Write-Host (T ' 3) 切换到最新版本' ' 3) Switch to latest version')
+        Write-Host (T ' 4) 解锁并恢复 Steam 最新版' ' 4) Unlock and restore Steam latest')
+        Write-Host (T ' 5) 锁定状态 / 开始游戏' ' 5) Lock status / launch game')
+        Write-Host (T ' 6) 登记当前版本' ' 6) Register current version')
+        Write-Host (T ' 7) 探测 manifest' ' 7) Probe manifest')
+        Write-Host (T ' 8) 设置' ' 8) Settings')
+        Write-Host (T ' 0) 退出' ' 0) Exit')
         Write-Host ''
         $choice = Read-Host '请选择'
         switch ($choice.Trim().ToLowerInvariant()) {
